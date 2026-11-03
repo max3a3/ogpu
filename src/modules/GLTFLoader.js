@@ -237,9 +237,10 @@ export class GLTFLoader {
             // declares the attribute; hasTangents below selects the code path).
             tangent: tangentAttribute(tangent, position.length / 3),
         };
-        if (indices) data.indices = { data: indices };
+        if (indices) data.indices = { data: padIndices(indices) };
 
         const geometry = new Geometry(this.gpu, { data });
+        if (indices) geometry.nonInstancedVerts.numElements = indices.length;
 
         const material = this.json.materials?.[primitive.material] || {};
         const pbr = material.pbrMetallicRoughness || {};
@@ -550,14 +551,14 @@ export class GLTFLoader {
         const anim = new Animation({ label: animData.label, data: animData, transforms: skin.poseTransforms }).fps(fps);
         skin.addAnimation(anim);
 
-        const geometry = new Geometry(this.gpu, {
-            data: {
-                position: { data: skinData.position, numComponents: 3 },
-                normal: { data: skinData.normal, numComponents: 3 },
-                uv: { data: skinData.uv, numComponents: 2 },
-                indices: { data: skinData.indices },
-            },
-        });
+        const geometryData = {
+            position: { data: skinData.position, numComponents: 3 },
+            normal: { data: skinData.normal, numComponents: 3 },
+            uv: { data: skinData.uv, numComponents: 2 },
+        };
+        if (skinData.indices) geometryData.indices = { data: padIndices(skinData.indices) };
+        const geometry = new Geometry(this.gpu, { data: geometryData });
+        if (skinData.indices) geometry.nonInstancedVerts.numElements = skinData.indices.length;
 
         const matIndex = this.skinnedMeshes[mesh].material ?? 0;
         const mat = this.json.materials?.[matIndex] || {};
@@ -671,8 +672,9 @@ export class GLTFLoader {
             uv: { data: d.uv, numComponents: 2 },
             tangent: tangentAttribute(d.tangent, d.position.length / 3),
         };
-        if (d.indices) data.indices = { data: d.indices };
+        if (d.indices) data.indices = { data: padIndices(d.indices) };
         const geometry = new Geometry(this.gpu, { data });
+        if (d.indices) geometry.nonInstancedVerts.numElements = d.indices.length;
         geometry.hasTangents = d.hasTangents;
         return geometry;
     }
@@ -1036,6 +1038,15 @@ function normalize(v, componentType) {
         default:
             return v;
     }
+}
+
+function padIndices(indices) {
+    const paddedLength = Math.ceil(indices.length / 4) * 4;
+    if (paddedLength === indices.length) return indices;
+
+    const padded = new indices.constructor(paddedLength);
+    padded.set(indices);
+    return padded;
 }
 
 function computeNormals(positions, indices) {
